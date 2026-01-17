@@ -6,12 +6,16 @@ const bytes = require('bytes');
 const NodeCache = require('node-cache');
 const axios = require('axios');
 
-require('dotenv').config(); // ✅ 提前加载
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const musicDir = path.join(__dirname, process.env.MUSIC_DIR || 'music');
+// ✅ 修复：绝对路径优先，避免 /app/app/... 这种重复拼接
+const rawMusicDir = process.env.MUSIC_DIR || 'music';
+const musicDir = path.isAbsolute(rawMusicDir)
+  ? rawMusicDir
+  : path.join(__dirname, rawMusicDir);
 
 // 管理密码
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
@@ -30,10 +34,12 @@ function getContentType(ext) {
 if (!fs.existsSync(musicDir)) {
   fs.mkdirSync(musicDir, { recursive: true });
   console.log(`Created music directory: ${musicDir}`);
+} else {
+  console.log(`Music directory: ${musicDir}`);
 }
 
-// 创建缓存实例，TTL 设置为1小时
-const cache = new NodeCache({ 
+// 创建缓存实例
+const cache = new NodeCache({
   stdTTL: 7200,
   checkperiod: 120,
   maxKeys: 500
@@ -48,11 +54,14 @@ const stats = {
 // JSON 格式化
 app.set('json spaces', 2);
 
+// 解析请求体
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// 静态文件服务
 app.use('/static', express.static(musicDir));
 
+// CORS
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -60,9 +69,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// 前端静态文件
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 直链生成
+// 直链播放
 app.get('/music/:filename', async (req, res) => {
   const filename = req.params.filename;
 
@@ -81,7 +91,11 @@ app.get('/music/:filename', async (req, res) => {
   if (!fileInfo) {
     try {
       const stat = await fs.promises.stat(filepath);
-      fileInfo = { size: stat.size, mtime: stat.mtime.toUTCString(), exists: true };
+      fileInfo = {
+        size: stat.size,
+        mtime: stat.mtime.toUTCString(),
+        exists: true
+      };
       cache.set(filepath, fileInfo);
     } catch (err) {
       return res.status(404).send('File not found');
@@ -101,7 +115,10 @@ app.get('/music/:filename', async (req, res) => {
 
   if (range) {
     const ranges = rangeParser(fileInfo.size, range);
-    if (ranges === -1 || ranges === -2) return res.status(416).send('Range not satisfiable');
+
+    if (ranges === -1 || ranges === -2) {
+      return res.status(416).send('Range not satisfiable');
+    }
 
     const { start, end } = ranges[0];
     const chunk = end - start + 1;
@@ -112,34 +129,45 @@ app.get('/music/:filename', async (req, res) => {
       'Content-Length': chunk
     });
 
-    const stream = fs.createReadStream(filepath, { start, end, highWaterMark: 64 * 1024 });
+    const stream = fs.createReadStream(filepath, {
+      start,
+      end,
+      highWaterMark: 64 * 1024
+    });
 
     stats.totalBytes += chunk;
     stats.requests += 1;
 
     stream.on('error', (error) => {
       console.error(`Stream error for ${filename}:`, error);
-      if (!res.headersSent) res.status(500).send('Internal server error');
+      if (!res.headersSent) {
+        res.status(500).send('Internal server error');
+      }
     });
 
     stream.pipe(res);
   } else {
     res.set({ 'Content-Length': fileInfo.size });
 
-    const stream = fs.createReadStream(filepath, { highWaterMark: 64 * 1024 });
+    const stream = fs.createReadStream(filepath, {
+      highWaterMark: 64 * 1024
+    });
 
     stats.totalBytes += fileInfo.size;
     stats.requests += 1;
 
     stream.on('error', (error) => {
       console.error(`Stream error for ${filename}:`, error);
-      if (!res.headersSent) res.status(500).send('Internal server error');
+      if (!res.headersSent) {
+        res.status(500).send('Internal server error');
+      }
     });
 
     stream.pipe(res);
   }
 });
 
+// 统计接口
 app.get('/stats', (req, res) => {
   res.json({
     totalTransferred: bytes(stats.totalBytes),
@@ -147,10 +175,13 @@ app.get('/stats', (req, res) => {
   });
 });
 
+// 下载音乐API
 app.get('/api/download', async (req, res) => {
   const { url, name } = req.query;
 
-  if (!url) return res.status(400).json({ error: 'Please provide a music url' });
+  if (!url) {
+    return res.status(400).json({ error: 'Please provide a music url' });
+  }
 
   const urlObj = new URL(url);
   let urlFileName = path.basename(urlObj.pathname);
@@ -199,7 +230,6 @@ app.get('/api/download', async (req, res) => {
     });
 
     const writer = fs.createWriteStream(savePath);
-
     response.data.pipe(writer);
 
     writer.on('error', (err) => {
@@ -229,6 +259,7 @@ function formatFileSize(bytes) {
   return `${size.toFixed(2)}${units[unitIndex]}`;
 }
 
+// 获取音乐列表 API
 app.get('/api/music/list', async (req, res) => {
   try {
     const files = await fs.promises.readdir(musicDir);
@@ -236,7 +267,7 @@ app.get('/api/music/list', async (req, res) => {
       ['.mp3', '.wav', '.flac', '.m4a'].includes(path.extname(file).toLowerCase())
     );
 
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol; // ✅ 更稳
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
     const host = req.get('host');
 
     const musicList = await Promise.all(musicFiles.map(async file => {
@@ -263,6 +294,7 @@ app.get('/api/music/list', async (req, res) => {
   }
 });
 
+// 删除音乐API
 app.post('/api/delete/music', async (req, res) => {
   const names = req.body.names || req.query.names;
   const password = req.body.password || req.query.password;
@@ -319,7 +351,7 @@ app.post('/api/delete/music', async (req, res) => {
   }
 });
 
-// ✅ HF/容器外网访问关键：监听 0.0.0.0
+// 启动服务器（HF/容器外网访问关键）
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`music service is running on port ${PORT}`);
 });
