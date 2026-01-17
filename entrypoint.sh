@@ -43,6 +43,10 @@ mkdir -p "$MUSIC_DIR"
 
 echo "[sync] MUSIC_DIR=$MUSIC_DIR"
 
+# ✅ 新增：启动时先拉取一次最新数据（不等同步循环）
+echo "[sync] Pull latest on startup..."
+git pull --rebase origin main >/dev/null 2>&1 || true
+
 # 确保音频走 LFS（如果还没设置）
 if [ ! -f ".gitattributes" ] || ! grep -q "filter=lfs" ".gitattributes"; then
   git lfs track "*.mp3" "*.flac" "*.wav" "*.m4a" >/dev/null 2>&1 || true
