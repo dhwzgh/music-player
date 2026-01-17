@@ -6,6 +6,7 @@ on:
     paths:
       - 'Dockerfile'
       - 'app.js'
+      - 'entrypoint.sh'
       - 'package.json'
   pull_request:
     branches: [ main ]
@@ -39,10 +40,10 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/laowang-music-a:latest
+            ghcr.io/${{ github.repository_owner }}/laowang-music:latest
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=music-palyer
+            org.opencontainers.image.description=music-player
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
