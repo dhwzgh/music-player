@@ -4,13 +4,18 @@ const fs = require('fs');
 const rangeParser = require('range-parser');
 const bytes = require('bytes');
 const NodeCache = require('node-cache');
-const axios = require('axios');  
+const axios = require('axios');
+
+// ✅ dotenv 要尽早加载，确保 MUSIC_DIR / ADMIN_PASSWORD 等环境变量在计算前就生效
+require('dotenv').config();
+
 const app = express();
+
+// ✅ 兼容 HF：用 PORT 环境变量；本地默认 3000
 const PORT = process.env.PORT || 3000;
 
+// ✅ 你的音乐目录逻辑保持不变
 const musicDir = path.join(__dirname, process.env.MUSIC_DIR || 'music');
-
-require('dotenv').config();
 
 // 管理密码
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
@@ -274,12 +279,9 @@ app.get('/api/music/list', async (req, res) => {
       ['.mp3', '.wav', '.flac', '.m4a'].includes(path.extname(file).toLowerCase())
     );
 
-    // 获取当前请求的完整URL
-    const currentUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const urlObj = new URL(currentUrl);
-    // 使用 x-forwarded-proto 头来判断实际协议
-    const protocol = req.headers['x-forwarded-proto'] || urlObj.protocol;
-    const host = urlObj.host;
+    // ✅ 这里协议判断更稳：优先 x-forwarded-proto（HF/反代环境常用）
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.get('host');
 
     const musicList = await Promise.all(musicFiles.map(async file => {
       const filePath = path.join(musicDir, file);
@@ -368,7 +370,7 @@ app.post('/api/delete/music', async (req, res) => {
   }
 });
 
-// 启动服务器
-app.listen(PORT, () => {
+// ✅ 启动服务器：必须监听 0.0.0.0（HF/容器外网访问关键）
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`music service is running on port ${PORT}`);
 });
