@@ -37,9 +37,11 @@ git config user.name  "${GIT_NAME:-hf-sync-bot}"
 
 mkdir -p "$SUBDIR"
 
-# 关键：让 app 写入 dataset 工作区（绝对路径）
+# ✅ 关键：让 app 写入 dataset 工作区（绝对路径）
 export MUSIC_DIR="${REPO_DIR}/${SUBDIR}"
 mkdir -p "$MUSIC_DIR"
+
+echo "[sync] MUSIC_DIR=$MUSIC_DIR"
 
 # 确保音频走 LFS（如果还没设置）
 if [ ! -f ".gitattributes" ] || ! grep -q "filter=lfs" ".gitattributes"; then
