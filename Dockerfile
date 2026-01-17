@@ -1,14 +1,14 @@
-FROM node:alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
+COPY package*.json ./
+RUN npm ci --omit=dev
+
 COPY . .
 
-EXPOSE 3000
-
-RUN apk update && apk upgrade &&\
-    apk add --no-cache unzip zip wget curl git screen &&\
-    chmod +x app.js &&\
-    npm install
+ENV NODE_ENV=production
+ENV PORT=7860
+EXPOSE 7860
 
 CMD ["npm", "start"]
